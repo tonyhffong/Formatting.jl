@@ -1,7 +1,10 @@
 # Formatting
 
 This package offers Python-style general formatting and c-style numerical formatting (for speed).
-[![Build Status](https://travis-ci.org/lindahua/Formatting.jl.png?branch=master)](https://travis-ci.org/lindahua/Formatting.jl)
+
+[![Build Status](https://travis-ci.org/JuliaLang/Formatting.jl.svg?branch=master)](https://travis-ci.org/JuliaLang/Formatting.jl)
+[![Formatting](http://pkg.julialang.org/badges/Formatting_0.3.svg)](http://pkg.julialang.org/?pkg=Formatting&ver=0.3)
+[![Formatting](http://pkg.julialang.org/badges/Formatting_0.4.svg)](http://pkg.julialang.org/?pkg=Formatting&ver=0.4)
 
 ---------------
 
@@ -86,7 +89,7 @@ One can use ``printfmt`` and ``printfmtln`` for formatted printing:
     printfmt(FormatExpr("{1:d}", 10)) # OK
     ```
 
-    
+
 - **printfmtln**(io, fe, args...)
 
 - **printfmtln**(fe, args...)
@@ -100,7 +103,7 @@ One can use ``fmt`` to format a single value into a string, or ``format`` to for
 - **fmt**(fspec, a)
 
     Format a single value using a format specification given by ``fspec``, where ``fspec`` can be either a string or an instance of ``FormatSpec``.
-    
+
 - **format**(fe, args...)
 
     Format arguments using a format expression given by ``fe``, where ``fe`` can be either a string or an instance of ``FormatSpec``.
