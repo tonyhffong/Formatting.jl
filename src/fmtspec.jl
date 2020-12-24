@@ -26,7 +26,7 @@ _tycls(c::Char) =
     (c == 's') ? 's' :
     error("Invalid type char $(c)")
 
-immutable FormatSpec
+struct FormatSpec
     cls::Char    # category: 'i' | 'f' | 'c' | 's'
     typ::Char
     fill::Char
@@ -102,7 +102,7 @@ function FormatSpec(s::AbstractString)
                 _align = a1[1]
             else
                 _fill = a1[1]
-                _align = a1[2]
+                _align = a1[nextind(a1, 1)]
             end
         end
 
@@ -158,32 +158,34 @@ end
 
 ## formatted printing using a format spec
 
-type _Dec end
-type _Oct end
-type _Hex end
-type _HEX end
-type _Bin end
+mutable struct _Dec end
+mutable struct _Oct end
+mutable struct _Hex end
+mutable struct _HEX end
+mutable struct _Bin end
 
 _srepr(x) = repr(x)
 _srepr(x::AbstractString) = x
 _srepr(x::Char) = string(x)
+_srepr(x::Enum) = string(x)
 
-if isdefined(:Enum)
-    _srepr(x::Enum) = string(x)
-end
+_toint(x) = Integer(x)
+_toint(x::AbstractString) = parse(Int, x)
+_tofloat(x) = float(x)
+_tofloat(x::AbstractString) = parse(Float64, x)
 
 function printfmt(io::IO, fs::FormatSpec, x)
     cls = fs.cls
     ty = fs.typ
     if cls == 'i'
-        ix = @compat Integer(x)
+        ix = _toint(x)
         ty == 'd' || ty == 'n' ? _pfmt_i(io, fs, ix, _Dec()) :
         ty == 'x' ? _pfmt_i(io, fs, ix, _Hex()) :
         ty == 'X' ? _pfmt_i(io, fs, ix, _HEX()) :
         ty == 'o' ? _pfmt_i(io, fs, ix, _Oct()) :
         _pfmt_i(io, fs, ix, _Bin())
     elseif cls == 'f'
-        fx = float(x)
+        fx = _tofloat(x)
         if isfinite(fx)
             ty == 'f' || ty == 'F' ? _pfmt_f(io, fs, fx) :
             ty == 'e' || ty == 'E' ? _pfmt_e(io, fs, fx) :
@@ -194,11 +196,11 @@ function printfmt(io::IO, fs::FormatSpec, x)
     elseif cls == 's'
         _pfmt_s(io, fs, _srepr(x))
     else # cls == 'c'
-        _pfmt_s(io, fs, @compat Char(x))
+        _pfmt_s(io, fs, Char(x))
     end
 end
 
-printfmt(fs::FormatSpec, x) = printfmt(STDOUT, fs, x)
+printfmt(fs::FormatSpec, x) = printfmt(stdout, fs, x)
 
-fmt(fs::FormatSpec, x) = (buf = IOBuffer(); printfmt(buf, fs, x); bytestring(buf))
+fmt(fs::FormatSpec, x) = sprint(printfmt, fs, x)
 fmt(spec::AbstractString, x) = fmt(FormatSpec(spec), x)

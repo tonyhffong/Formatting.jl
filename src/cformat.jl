@@ -1,84 +1,80 @@
-formatters = Dict{ ASCIIString, Function }()
+formatters = Dict{ String, Function }()
 
-function sprintf1( fmt::ASCIIString, x )
-    global formatters
-    f = generate_formatter( fmt )
-    f( x )
-end
+sprintf1( fmt::String, x ) = eval(Expr(:call, generate_formatter( fmt ), x))
 
-function generate_formatter( fmt::ASCIIString )
-    global formatters
-    if haskey( formatters, fmt )
-        return formatters[fmt]
-    end
-    func = symbol( "sprintf_" * replace( base64encode( fmt ), "=", "!" ) )
-
-    if !contains( fmt, "'" )
-        test = Base.Printf.parse( fmt )
-        if length( test ) != 1 || !( typeof( test[1] ) <: Tuple )
+function checkfmt(fmt)
+    @static if VERSION > v"1.6.0-DEV.854"
+        test = Printf.Format(fmt)
+        length(test.formats) == 1 ||
             error( "Only one AND undecorated format string is allowed")
-        end
-
-        code = quote
-            function $func( x )
-                @sprintf( $fmt, x )
-            end
-        end
     else
-        conversion = fmt[end]
-        if !in( conversion, "sduifF" )
-            error( "thousand separator not defined for " * string( conversion ) * " conversion")
-        end
-        fmtactual = replace( fmt, "'", "", 1 )
-        test = Base.Printf.parse( fmtactual )
-        if length( test ) != 1 || !( typeof( test[1] ) <: Tuple )
+        test = @static VERSION >= v"1.4.0-DEV.180" ? Printf.parse(fmt) : Base.Printf.parse( fmt )
+        (length( test ) == 1 && typeof( test[1] ) <: Tuple) ||
             error( "Only one AND undecorated format string is allowed")
-        end
-        if in( conversion, "sfF" )
-            code = quote
-                function $func{T<:Real}( x::T )
-                    s = @sprintf( $fmtactual, x )
-                    # commas are added to only the numerator
-                    if T <: Rational && endswith( $fmtactual, "s" )
-                        spos = findfirst( s, '/' )
-                        s = addcommas( s[1:spos-1] ) * s[spos:end]
-                    else
-                        dpos = findfirst( s, '.' )
-                        if dpos != 0
-                            s = addcommas( s[1:dpos-1] ) * s[ dpos:end ]
-                        else # find the rightmost digit
-                            for i in length( s ):-1:1
-                                if isdigit( s[i] )
-                                    s = addcommas( s[1:i] ) * s[i+1:end]
-                                    break
-                                end
-                            end
-                        end
-                    end
-                    s
-                end
-            end
-        else
-            code = quote
-                function $func( x )
-                    s = @sprintf( $fmtactual, x )
-                    for i in length( s ):-1:1
-                        if isdigit( s[i] )
-                            s = addcommas( s[1:i] ) * s[i+1:end]
-                            break
-                        end
-                    end
-                    s
-                end
-            end
-        end
     end
-    f = eval( code )
-    formatters[ fmt ] = f
-    f
 end
 
-function addcommas( s::ASCIIString )
+function generate_formatter( fmt::String )
+    global formatters
+
+    haskey( formatters, fmt ) && return formatters[fmt]
+
+    if !occursin("'", fmt)
+        checkfmt(fmt)
+        formatter = @eval(x->@sprintf( $fmt, x ))
+        return (formatters[ fmt ] = x->Base.invokelatest(formatter, x))
+    end
+
+    conversion = fmt[end]
+    conversion in "sduifF" ||
+        error( string("thousand separator not defined for ", conversion, " conversion") )
+
+    fmtactual = replace( fmt, "'" => "", count=1 )
+    checkfmt( fmtactual )
+    if !occursin(conversion, "sfF")
+        formatter = @eval(x->checkcommas(@sprintf( $fmtactual, x )))
+        return (formatters[ fmt ] = x->Base.invokelatest(formatter, x))
+    end
+
+    formatter =
+        if endswith( fmtactual, 's')
+            @eval((x::Real)->((eltype(x) <: Rational)
+                              ? addcommasrat(@sprintf( $fmtactual, x ))
+                              : addcommasreal(@sprintf( $fmtactual, x ))))
+        else
+            @eval((x::Real)->addcommasreal(@sprintf( $fmtactual, x )))
+        end
+    return (formatters[ fmt ] = x->Base.invokelatest(formatter, x))
+end
+
+function addcommasreal(s)
+    dpos = findfirst( isequal('.'), s )
+    dpos !== nothing && return string(addcommas( s[1:dpos-1] ), s[ dpos:end ])
+    # find the rightmost digit
+    for i in length( s ):-1:1
+        isdigit( s[i] ) && return string(addcommas( s[1:i] ), s[i+1:end])
+    end
+    s
+end
+
+function addcommasrat(s)
+    # commas are added to only the numerator
+    spos = findfirst( isequal('/'), s )
+    string(addcommas( s[1:spos-1] ), s[spos:end])
+end
+
+function checkcommas(s)
+    for i in length( s ):-1:1
+        if isdigit( s[i] )
+            s = string(addcommas( s[1:i] ), s[i+1:end])
+            break
+        end
+    end
+    s
+end
+
+
+function addcommas( s::String )
     len = length(s)
     t = ""
     for i in 1:3:len
@@ -105,7 +101,7 @@ function generate_format_string(;
         signed::Bool=false,
         positivespace::Bool=false,
         alternative::Bool=false,
-        conversion::ASCIIString="f" #aAdecEfFiosxX
+        conversion::String="f" #aAdecEfFiosxX
         )
     s = "%"
     if commas
@@ -137,7 +133,7 @@ function generate_format_string(;
     s * conversion
 end
 
-function format{T<:Real}( x::T;
+function format( x::T;
         width::Int=-1,
         precision::Int= -1,
         leftjustified::Bool=false,
@@ -155,8 +151,8 @@ function format{T<:Real}( x::T;
         tryden::Int = 0, # if 2 or higher, try to use this denominator, without losing precision
         suffix::AbstractString="", # useful for units/%
         autoscale::Symbol=:none, # :metric, :binary or :finance
-        conversion::ASCIIString=""
-        )
+        conversion::String=""
+        ) where {T<:Real}
     checkwidth = commas
     if conversion == ""
         if T <: AbstractFloat || T <: Rational && precision != -1
@@ -218,11 +214,11 @@ function format{T<:Real}( x::T;
                     (1024.0 ^8,  "Yi" ),
                     (1024.0 ^7,  "Zi" ),
                     (1024.0 ^6,  "Ei" ),
-                    (1024^5,  "Pi" ),
-                    (1024^4,  "Ti" ),
-                    (1024^3,  "Gi"),
-                    (1024^2,  "Mi"),
-                    (1024,    "Ki")
+                    (1024.0 ^5,  "Pi" ),
+                    (1024.0 ^4,  "Ti" ),
+                    (1024.0 ^3,  "Gi"),
+                    (1024.0 ^2,  "Mi"),
+                    (1024.0,     "Ki")
                 ]
             else # :finance
                 scales = [
@@ -289,18 +285,18 @@ function format{T<:Real}( x::T;
             end
             checkwidth = true
         elseif !mixedfraction
-            s = replace( s, "//", fractionsep )
+            s = replace( s, "//" => fractionsep )
             checkwidth = true
         end
     elseif stripzeros && in( actualconv[1], "fFeEs" )
-        dpos = findfirst( s, '.')
+        dpos = findfirst( isequal('.'), s )
         if in( actualconv[1], "eEs" )
             if in( actualconv[1], "es" )
-                epos = findfirst( s, 'e' )
+                epos = findfirst( isequal('e'), s )
             else
-                epos = findfirst( s, 'E' )
+                epos = findfirst( isequal('E'), s )
             end
-            if epos == 0
+            if epos === nothing
                 rpos = length( s )
             else
                 rpos = epos-1
@@ -344,12 +340,12 @@ function format{T<:Real}( x::T;
 
     if checkwidth && width != -1
         if length(s) > width
-            s = replace( s, " ", "", length(s)-width )
+            s = replace( s, " " => "", count=length(s)-width )
             if length(s) > width && endswith( s, " " )
-                s = reverse( replace( reverse(s), " ", "", length(s)-width ) )
+                s = reverse( replace( reverse(s), " " => "", count=length(s)-width ) )
             end
             if length(s) > width
-                s = replace( s, ",", "", length(s)-width )
+                s = replace( s, "," => "", count=length(s)-width )
             end
         elseif length(s) < width
             if leftjustified

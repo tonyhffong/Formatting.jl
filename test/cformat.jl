@@ -1,29 +1,36 @@
 using Formatting
-using Base.Test
+using Test
+using Printf
+using Random
+
+_erfinv(z) = sqrt(π) * Base.Math.@horner(z, 0, 1, 0, π/12, 0, 7π^2/480, 0, 127π^3/40320, 0,
+                                         4369π^4/5806080, 0, 34807π^5/182476800) / 2
 
 function test_equality()
     println( "test cformat equality...")
-    srand(10)
-    fmts = ASCIIString[ "%10.4f", "%f", "%e", "%10f", "%.3f", "%.3e" ]
-    for fmt in fmts
-        l = :( x-> x )
-        l.args[2].args[2] = Expr( :macrocall, symbol( "@sprintf" ), fmt, :x )
-        mfmtr = eval( l )
+    Random.seed!( 10 )
+    fmts = [ (x->@sprintf("%10.4f",x), "%10.4f"),
+             (x->@sprintf("%f", x),    "%f"),
+             (x->@sprintf("%e", x),    "%e"),
+             (x->@sprintf("%10f", x),  "%10f"),
+             (x->@sprintf("%.3f", x),  "%.3f"),
+             (x->@sprintf("%.3e", x),  "%.3e")]
+    for (mfmtr,fmt) in fmts
         for i in 1:10000
-            n = erfinv( rand() * 1.99 - 1.99/2.0 )
+            n = _erfinv( rand() * 1.99 - 1.99/2.0 )
             expect = mfmtr( n )
             actual = sprintf1( fmt, n )
             @test expect == actual
         end
     end
 
-    fmts = ASCIIString[ "%d", "%10d", "%010d", "%-10d" ]
-    for fmt in fmts
-        l = :( x-> x )
-        l.args[2].args[2] = Expr( :macrocall, symbol( "@sprintf" ), fmt, :x )
-        mfmtr = eval( l )
+    fmts = [ (x->@sprintf("%d",x),    "%d"),
+             (x->@sprintf("%10d",x),  "%10d"),
+             (x->@sprintf("%010d",x), "%010d"),
+             (x->@sprintf("%-10d",x), "%-10d")]
+    for (mfmtr,fmt) in fmts
         for i in 1:10000
-            j = round(Int, erfinv( rand() * 1.99 - 1.99/2.0 ) * 100000 )
+            j = round(Int, _erfinv( rand() * 1.99 - 1.99/2.0 ) * 100000 )
             expect = mfmtr( j )
             actual = sprintf1( fmt, j )
             @test expect == actual
@@ -61,22 +68,22 @@ println( "integer sprintf speed, bypass repeated lookup")
 @time runtime_int_bypass()
 
 function native_float()
-    srand( 10 )
+    Random.seed!( 10 )
     for i in 1:200000
-        @sprintf( "%10.4f", erfinv( rand() ) )
+        @sprintf( "%10.4f", _erfinv( rand() ) )
     end
 end
 function runtime_float()
-    srand( 10 )
+    Random.seed!( 10 )
     for i in 1:200000
-        sprintf1( "%10.4f", erfinv( rand() ) )
+        sprintf1( "%10.4f", _erfinv( rand() ) )
     end
 end
 function runtime_float_bypass()
     f = generate_formatter( "%10.4f" )
-    srand( 10 )
+    Random.seed!( 10 )
     for i in 1:200000
-        f( erfinv( rand() ) )
+        f( _erfinv( rand() ) )
     end
 end
 
@@ -180,3 +187,15 @@ end
 
 test_commas()
 test_format()
+
+function test_generate_formatter()
+    fmt = generate_formatter( "%7.2f" )
+    @test fmt( 1.234 ) == "   1.23"
+    @test fmt( π ) == "   3.14"
+    fmt = generate_formatter( "%'10.2f" )
+    @test fmt( 1234.5678 ) == "   1,234.57"    # BUG 1 extra space
+    fmt = generate_formatter( "%'10d" )
+    @test fmt( 1234567 ) == "   1,234,567"    # BUG 2 extra spaces
+end
+
+test_generate_formatter()

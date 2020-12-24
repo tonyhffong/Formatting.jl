@@ -2,9 +2,22 @@
 
 This package offers Python-style general formatting and c-style numerical formatting (for speed).
 
-[![Build Status](https://travis-ci.org/JuliaLang/Formatting.jl.svg?branch=master)](https://travis-ci.org/JuliaLang/Formatting.jl)
-[![Formatting](http://pkg.julialang.org/badges/Formatting_0.3.svg)](http://pkg.julialang.org/?pkg=Formatting&ver=0.3)
-[![Formatting](http://pkg.julialang.org/badges/Formatting_0.4.svg)](http://pkg.julialang.org/?pkg=Formatting&ver=0.4)
+| **PackageEvaluator**                                            | **Build Status**                                                                                |
+|:---------------------------------------------------------------:|:-----------------------------------------------------------------------------------------------:|
+|[![][pkg-0.6-img]][pkg-0.6-url] | [![][travis-img]][travis-url] [![][appveyor-img]][appveyor-url] [![][codecov-img]][codecov-url] |
+
+
+[travis-img]: https://travis-ci.org/JuliaIO/Formatting.jl.svg?branch=master
+[travis-url]: https://travis-ci.org/JuliaIO/Formatting.jl
+
+[appveyor-img]: https://ci.appveyor.com/api/projects/status/all0t7gefcl5dgv1/branch/master?svg=true
+[appveyor-url]: https://ci.appveyor.com/project/jmkuhn/formatting-jl/branch/master
+
+[codecov-img]: https://codecov.io/gh/JuliaIO/Formatting.jl/branch/master/graph/badge.svg
+[codecov-url]: https://codecov.io/gh/JuliaIO/Formatting.jl
+
+[pkg-0.6-img]: http://pkg.julialang.org/badges/Formatting_0.6.svg
+[pkg-0.6-url]: http://pkg.julialang.org/?pkg=Formatting
 
 ---------------
 
@@ -23,7 +36,7 @@ To start using the package, you can simply write
 using Formatting
 ```
 
-This package depends on Julia of version 0.2 or above. It has no other dependencies. The package is MIT-licensed.
+This package depends on Julia of version 0.7 or above. It has no other dependencies. The package is MIT-licensed.
 
 
 ## Python-style Types and Functions

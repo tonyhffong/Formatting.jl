@@ -1,5 +1,5 @@
 using Formatting
-using Base.Test
+using Test
 
 include( "cformat.jl" )
 include( "fmtspec.jl" )

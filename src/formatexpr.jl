@@ -2,7 +2,7 @@
 
 ### Argument specification
 
-immutable ArgSpec
+struct ArgSpec
     argidx::Int
     hasfilter::Bool
     filter::Function
@@ -26,13 +26,14 @@ function make_argspec(s::AbstractString, pos::Int)
     ff::Function = Base.identity
 
     if !isempty(s)
-        ifil = searchindex(s, "|>")
-        if ifil == 0
+        filrange = findfirst("|>", s)
+        if filrange === nothing
             iarg = parse(Int,s)
         else
-            iarg = ifil > 1 ? parse(Int,s[1:ifil-1]) : -1
+            ifil = first(filrange)
+            iarg = ifil > 1 ? parse(Int,s[1:prevind(s, ifil)]) : -1
             hasfil = true
-            ff = eval(symbol(s[ifil+2:end]))
+            ff = eval(Symbol(s[ifil+2:end]))
         end
     end
 
@@ -47,7 +48,7 @@ function make_argspec(s::AbstractString, pos::Int)
         else
             pos = -1
         end
-    end 
+    end
 
     return (ArgSpec(iarg, hasfil, ff), pos)
 end
@@ -55,21 +56,21 @@ end
 
 ### Format entry
 
-immutable FormatEntry
+struct FormatEntry
     argspec::ArgSpec
     spec::FormatSpec
 end
 
 function make_formatentry(s::AbstractString, pos::Int)
     @assert s[1] == '{' && s[end] == '}'
-    sc = s[2:end-1]
-    icolon = search(sc, ':')
-    if icolon == 0  # no colon
+    sc = s[2:prevind(s, lastindex(s))]
+    icolon = findfirst(isequal(':'), sc)
+    if icolon === nothing  # no colon
         (argspec, pos) = make_argspec(sc, pos)
         spec = FormatSpec('s')
     else
-        (argspec, pos) = make_argspec(sc[1:icolon-1], pos)
-        spec = FormatSpec(sc[icolon+1:end])
+        (argspec, pos) = make_argspec(sc[1:prevind(sc, icolon)], pos)
+        spec = FormatSpec(sc[nextind(sc, icolon):end])
     end
     return (FormatEntry(argspec, spec), pos)
 end
@@ -77,57 +78,53 @@ end
 
 ### Format expression
 
-type FormatExpr
-    prefix::UTF8String
-    suffix::UTF8String
+mutable struct FormatExpr
+    prefix::String
+    suffix::String
     entries::Vector{FormatEntry}
-    inter::Vector{UTF8String}
+    inter::Vector{String}
 end
 
 _raise_unmatched_lbrace() = error("Unmatched { in format expression.")
 
 function find_next_entry_open(s::AbstractString, si::Int)
-    slen = length(s)
-    p = search(s, '{', si)
-    p < slen || _raise_unmatched_lbrace()
-    while p > 0 && s[p+1] == '{'  # escape `{{`
-        p = search(s, '{', p+2)
-        p < slen || _raise_unmatched_lbrace()
+    slen = lastindex(s)
+    p = findnext(isequal('{'), s, si)
+    (p === nothing || p < slen) || _raise_unmatched_lbrace()
+    while p !== nothing && s[p+1] == '{'  # escape `{{`
+        p = findnext(isequal('{'), s, p+2)
+        (p === nothing || p < slen) || _raise_unmatched_lbrace()
     end
     # println("open at $p")
-    pre = p > 0 ? s[si:p-1] : s[si:end]
+    pre = p !== nothing ? s[si:prevind(s, p)] : s[si:end]
     if !isempty(pre)
-        pre = replace(pre, "{{", '{')
-        pre = replace(pre, "}}", '}')
+        pre = replace(pre, "{{" => '{')
+        pre = replace(pre, "}}" => '}')
     end
-    return (p, utf8(pre))
+    return (p, convert(String, pre))
 end
 
 function find_next_entry_close(s::AbstractString, si::Int)
-    slen = length(s)
-    p = search(s, '}', si)
-    p > 0 || _raise_unmatched_lbrace()
+    p = findnext(isequal('}'), s, si)
+    p !== nothing || _raise_unmatched_lbrace()
     # println("close at $p")
     return p
 end
 
 function FormatExpr(s::AbstractString)
-    slen = length(s)
-    
     # init
-    prefix = utf8("")
-    suffix = utf8("")
+    prefix = ""
+    suffix = ""
     entries = FormatEntry[]
-    inter = UTF8String[]
-
+    inter = String[]
     # scan
     (p, prefix) = find_next_entry_open(s, 1)
-    if p > 0
+    if p !== nothing
         q = find_next_entry_close(s, p+1)
         (e, pos) = make_formatentry(s[p:q], 0)
         push!(entries, e)
         (p, pre) = find_next_entry_open(s, q+1)
-        while p > 0
+        while p !== nothing
             push!(inter, pre)
             q = find_next_entry_close(s, p+1)
             (e, pos) = make_formatentry(s[p:q], pos)
@@ -141,7 +138,7 @@ end
 
 function printfmt(io::IO, fe::FormatExpr, args...)
     if !isempty(fe.prefix)
-        write(io, fe.prefix)
+        print(io, fe.prefix)
     end
     ents = fe.entries
     ne = length(ents)
@@ -149,21 +146,21 @@ function printfmt(io::IO, fe::FormatExpr, args...)
         e = ents[1]
         printfmt(io, e.spec, getarg(args, e.argspec))
         for i = 2:ne
-            write(io, fe.inter[i-1])
+            print(io, fe.inter[i-1])
             e = ents[i]
             printfmt(io, e.spec, getarg(args, e.argspec))
         end
     end
     if !isempty(fe.suffix)
-        write(io, fe.suffix)
+        print(io, fe.suffix)
     end
 end
 
 printfmt(io::IO, fe::AbstractString, args...) = printfmt(io, FormatExpr(fe), args...)
-@compat printfmt(fe::Union{AbstractString,FormatExpr}, args...) = printfmt(STDOUT, fe, args...)
+printfmt(fe::Union{AbstractString,FormatExpr}, args...) = printfmt(stdout, fe, args...)
 
-@compat printfmtln(io::IO, fe::Union{AbstractString,FormatExpr}, args...) = (printfmt(io, fe, args...); println(io))
-@compat printfmtln(fe::Union{AbstractString,FormatExpr}, args...) = printfmtln(STDOUT, fe, args...)
+printfmtln(io::IO, fe::Union{AbstractString,FormatExpr}, args...) = (printfmt(io, fe, args...); println(io))
+printfmtln(fe::Union{AbstractString,FormatExpr}, args...) = printfmtln(stdout, fe, args...)
 
-@compat format(fe::Union{AbstractString,FormatExpr}, args...) =
-    (buf = IOBuffer(); printfmt(buf, fe, args...); bytestring(buf))
+format(fe::Union{AbstractString,FormatExpr}, args...) =
+    sprint(printfmt, fe, args...)
